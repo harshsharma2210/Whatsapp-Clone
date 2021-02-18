@@ -65,7 +65,7 @@
   font-size: xx-small;
 }
 
-.chat__timestemp {
+.chat__timestamp {
   margin-left: 10px;
   font-size: xx-small;
 }
@@ -94,6 +94,7 @@
   padding: 10px;
   border: none;
   margin: 0 10px 0px 10px;
+  outline-width: 0;
 }
 
 .chat__footer > form > button {

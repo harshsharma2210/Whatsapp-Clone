@@ -1,6 +1,7 @@
 const express = require("express");
 const mongoose = require("mongoose");
-const Messages = require("./dbMessages");
+const Messages = require("./models/dbMessages");
+const Rooms = require("./models/rooms");
 const Pusher = require("pusher");
 const cors = require("cors");
 
@@ -23,17 +24,19 @@ mongoose.connect(connection_url, {
 const db = mongoose.connection;
 db.once("open", () => {
   console.log("conneted to mongo yeahh");
-  const msgCollection = db.collection("messagecontents");
-  const changeStream = msgCollection.watch();
+  const msgCollection = db.collection("rooms");
+  const changeStream = msgCollection.watch({ fullDocument: "updateLookup" });
   changeStream.on("change", (change) => {
-    if (change.operationType === "insert") {
+    if (change.operationType === "update") {
       const messageDetails = change.fullDocument;
-      console.log(messageDetails);
-      pusher.trigger("messages", "inserted", {
-        name: messageDetails.name,
-        message: messageDetails.message,
-        timestamp: messageDetails.timestamp,
-        received: messageDetails.received,
+      const lastmessage =
+        messageDetails.messages[messageDetails.messages.length - 1];
+      console.log(lastmessage);
+      pusher.trigger("messages", "update", {
+        name: lastmessage.name,
+        message: lastmessage.message,
+        timestamp: lastmessage.timestamp,
+        received: lastmessage.received,
       });
     }
   });
@@ -50,16 +53,66 @@ app.use(cors());
 
 app.get("/", (req, res) => res.status(200).send("hello world"));
 
-app.get("/messages/sync", (req, res) => {
-  Messages.find((err, data) => {
+app.get("/rooms/:id/messages/sync", (req, res) => {
+  Rooms.findById(req.params.id, (err, room) => {
+    if (err) res.status(500).send(err);
+    else {
+      res.status(200).send(room.messages);
+    }
+  });
+});
+
+// app.get("/rooms/:id/timestamp", (req, res) => {
+//   Rooms.findById(req.params.id, (err, room) => {
+//     if (err) res.status(500).send(err);
+//     else {
+//       const messages = room.messages;
+//       const lastmessage = messages[messages.length - 1];
+//       res.status(200).send(lastmessage.message);
+//     }
+//   });
+// });
+
+app.post("/rooms/:id/messages/new", (req, res) => {
+  const { message, name, timestamp, received } = req.body;
+  Rooms.findByIdAndUpdate(
+    req.params.id,
+    {
+      $push: {
+        messages: {
+          message: message,
+          name: name,
+          timestamp: timestamp,
+          received: received,
+        },
+      },
+    },
+    {
+      new: true,
+    }
+  ).exec((err, result) => {
+    if (err) {
+      return res.status(422).json({ error: err });
+    } else {
+      res.json(result);
+    }
+  });
+});
+app.get("/rooms/sync", (req, res) => {
+  Rooms.find((err, data) => {
     if (err) res.status(500).send(err);
     else res.status(200).send(data);
   });
 });
-
-app.post("/messages/new", (req, res) => {
-  const dbMessage = req.body;
-  Messages.create(dbMessage, (err, data) => {
+app.get("/rooms/:id", (req, res) => {
+  Rooms.findById(req.params.id, (err, room) => {
+    if (err) res.status(500).send(err);
+    else res.status(200).json(room);
+  });
+});
+app.post("/rooms/new", (req, res) => {
+  const room = req.body;
+  Rooms.create(room, (err, data) => {
     if (err) res.status(500).send(err);
     else res.status(201).send(data);
   });
